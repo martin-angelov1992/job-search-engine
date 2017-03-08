@@ -116,8 +116,11 @@ public class Scrape {
 		}
 
 		try {
-			companyName = agent.doc.findFirst("CompanyBlock").findFirst("Info").findFirst("Name");
-		} 
+			companyName = agent.doc.findFirst("CompanyBlock").findFirst("Info").findFirst("Name").innerHTML().trim();
+		} catch (NotFound e) {
+			e.printStackTrace();
+			System.err.print("Unable to get company name.");
+		}
 
 		try {
 			elements = agent.doc.findFirst("<div id=\"Nav\"").findFirst("<nav>").findFirst("<ul>").findEach("<li>");
@@ -126,6 +129,8 @@ public class Scrape {
 			e.printStackTrace();
 			return;
 		}
+
+		agent.doc.findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Description\">").innerHTML().trim();
 
 		for (Element element : elements) {
 			String categoryType;
@@ -146,7 +151,7 @@ public class Scrape {
 			categoryTypes.put(categoryType, categoryTypeValue);
 		}
 
-		processJobWithKnownFormat(categoryTypes);
+		processJobWithKnownFormat(categoryTypes, companyName, jobTitle);
 	}
 
 	private void processJobWithKnownFormat(Map<String, String> categoryTypes, String company, String jobTitle, String text) {
