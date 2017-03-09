@@ -14,6 +14,9 @@ import com.jaunt.UserAgent;
 public class Scrape {
 
 	private Set<String> ignoreCategoryTypes;
+
+	private Storage storage;
+
 	public static void main(String[] args) throws InterruptedException {
 		new Scrape().run();
 	}
@@ -98,14 +101,17 @@ public class Scrape {
 		}
 	}
 
-	private void handleUnknownFormat(String jobLink, UserAgent agent) {
+	private void handleUnknownFormat(UserAgent agent) {
+		String text = stripHtml(agent.doc.innerHTML());
 
+		storage.processJobWithUnknownFormat(text);
 	}
 
 	private void handleKnownFormat(String jobLink, UserAgent agent) {
 		Elements elements;
 		String jobTitle = null;
 		String companyName = null;
+		String jobText = null;
 		Map<String, String> categoryTypes = new HashMap<>();
 
 		try {
@@ -116,8 +122,11 @@ public class Scrape {
 		}
 
 		try {
-			companyName = agent.doc.findFirst("CompanyBlock").findFirst("Info").findFirst("Name");
-		} 
+			companyName = agent.doc.findFirst("CompanyBlock").findFirst("Info").findFirst("Name").innerHTML().trim();
+		} catch (NotFound e) {
+			System.err.println("Unable to extract company name");
+			e.printStackTrace();
+		}
 
 		try {
 			elements = agent.doc.findFirst("<div id=\"Nav\"").findFirst("<nav>").findFirst("<ul>").findEach("<li>");
@@ -125,6 +134,13 @@ public class Scrape {
 			System.err.printf("Unable to get category elements for: %s", jobLink);
 			e.printStackTrace();
 			return;
+		}
+
+		try {
+			jobText = agent.doc.findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Description\">").innerHTML().trim();
+		} catch (NotFound e) {
+			System.err.printf("Unable to get job text for: %s", jobLink);
+			e.printStackTrace();
 		}
 
 		for (Element element : elements) {
@@ -146,14 +162,10 @@ public class Scrape {
 			categoryTypes.put(categoryType, categoryTypeValue);
 		}
 
-		processJobWithKnownFormat(categoryTypes);
+		storage.processJobWithKnownFormat(categoryTypes, companyName, jobTitle, stripHtml(jobText));
 	}
 
-	private void processJobWithKnownFormat(Map<String, String> categoryTypes, String company, String jobTitle, String text) {
-		
-	}
-
-	private void processJobWithUnknownFormat(String company, String text) {
-		
+	private String stripHtml(String html) {
+		return html.replaceAll("(?s)<[^>]*>(\\s*<[^>]*>)*", " ");
 	}
 }
