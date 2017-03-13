@@ -97,14 +97,25 @@ public class Scrape {
 		if (parts[0].equals("obiavi-za-rabota")) {
 			handleKnownFormat(link, agent);
 		} else {
-			handleUnknownFormat(agent);
+			handleUnknownFormat(agent, link);
 		}
 	}
 
-	private void handleUnknownFormat(UserAgent agent) {
+	private void handleUnknownFormat(UserAgent agent, String link) {
 		String text = stripHtml(agent.doc.innerHTML());
 
-		storage.processJobWithUnknownFormat(text);
+		String[] parts = link.split(" ");
+
+		int lastIndex = parts.length-1;
+
+		if (parts[lastIndex].equals("")) {
+			lastIndex -= 1;
+		}
+
+		String company = parts[lastIndex-1].replace("-", " ");
+		String jobTitle = parts[lastIndex].replace("-", " ");
+
+		storage.processJobWithUnknownFormat(text, company, jobTitle);
 	}
 
 	private void handleKnownFormat(String jobLink, UserAgent agent) {

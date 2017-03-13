@@ -31,9 +31,43 @@ public class Storage {
 		try {
 			XContentBuilder builder = jsonBuilder().startObject();
 
-			
-                .field("user", "kimchy");
+			if (company != null) {
+				builder.field("company", company);
+			}
+
+			if (jobTitle != null) {
+				builder.field("jobTitle", jobTitle);
+			}
+
+			builder.field("text", text);
+
+			for (Map.Entry<String, String> entry : categoryTypes.entrySet()) {
+				String metaKey = entry.getKey();
+				String metaValue = entry.getValue();
+
+				builder.field(metaKey, metaValue);
+			}
+
             builder.endObject();
+			IndexResponse response = client.prepareIndex("jobs", company)
+			        .setSource(builder)
+			        .get();
+//			if (response.status().getStatus()) {
+//				
+//			}
+		} catch (IOException e) {
+			System.err.println("Unable to create document.");
+			e.printStackTrace();
+		}
+	}
+
+	public void processJobWithUnknownFormat(String text, String company, String jobTitle) {
+		XContentBuilder builder;
+		try {
+			builder = jsonBuilder().startObject().field("text", text)
+					.field("jobTitle", jobTitle)
+					.field("company", company).endObject();
+
 			IndexResponse response = client.prepareIndex("jobs", company)
 			        .setSource(builder)
 			        .get();
@@ -41,10 +75,6 @@ public class Storage {
 			System.err.println("Unable to create document.");
 			e.printStackTrace();
 		}
-	}
-
-	public void processJobWithUnknownFormat(String text) {
-		
 	}
 
 	public void close() {
