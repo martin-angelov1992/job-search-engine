@@ -1,10 +1,41 @@
 <html>
 	<head>
+		<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 		<script type="text/javascript">
-			ë
+		    var ES_url = "";
+			var facets_table = {
+			                    cities:[]
+								employment_types:[]
+			                    hierarchy_levels:[]};
+			$(document).ready(function() {
+				$("#search-button").click(function() {
+					var query = $("#search-field").text();
+				});
+			});
+
+			function get_ES_query(var query) {
+				var ES_query = "{"
+			    	'"query": {'
+			    		'"bool": {'
+			    			'"should": ['
+			    				'"match": {'
+			    					'"jobTitle": $title'
+			    				'},'
+			    				'"match": {'
+			    					'"company": $company'
+			    				'},'
+			    				'"match": {'
+		    						'"text": $text'
+		    					}'
+			    			']'
+			    		'}'
+			    	'}'
+			    "}";
+			}
 		</script>
 	</head>
 	<body>
+		<input id="search-field"></input><button id="search-button">Search Button</button>
 		<div id="facets"></div>
 		<div id="results"></div>
 	</body>
