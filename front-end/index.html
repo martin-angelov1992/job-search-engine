@@ -3,33 +3,77 @@
 		<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 		<script type="text/javascript">
 		    var ES_url = "";
+		    var facets_table_to_ES_field_map = ["cities" : "city", "employment_types" : "employment_type",
+		                                        "hierarchy_levels" : "hierarchy_level"];
 			var facets_table = {
 			                    cities:[]
 								employment_types:[]
 			                    hierarchy_levels:[]};
+
+			var ES_FILTERS = geterate_es_filters();
+			var PAGE_SIZE = 15;
+
+			function geterate_es_filters() {
+				var es_filters = "";
+				var last_property = null;
+
+				for (last_property in facets_table);
+
+				for (var key in facets_table) {
+					var facet_arr = facets_table[key];
+					for (i in facet_arr) {
+
+						var ES_field = facets_table_to_ES_field_map[key];
+						es_filters += '{"match" :{"'+ES_field+'": "';
+						es_filters += facet_arr[i];
+						es_filters += '"}}';
+	
+						if (key != last_property || i != facet_arr.length - 1) {
+							es_filters += ",";
+						}
+					}
+				}
+
+				return es_filters;
+			}
+
 			$(document).ready(function() {
 				$("#search-button").click(function() {
 					var query = $("#search-field").text();
+					var ES_query = get_ES_query(query);
+					$.get (ES_url, { json: ES_query+"_search?size"+PAGE_SIZE+"&from=0"}, function (res){
+					    
+					});
 				});
 			});
 
-			function get_ES_query(var query) {
+			function get_ES_query(query) {
+				var escaped_query = query.replace('"', '\"');
 				var ES_query = "{"
 			    	'"query": {'
 			    		'"bool": {'
 			    			'"should": ['
 			    				'"match": {'
-			    					'"jobTitle": $title'
+			    					'"jobTitle": "'+query+'"'
 			    				'},'
 			    				'"match": {'
-			    					'"company": $company'
+			    					'"company": "'+query+'"'
 			    				'},'
 			    				'"match": {'
-		    						'"text": $text'
-		    					}'
+		    						'"text": "'+query+'"'
+		    					'}'
 			    			']'
 			    		'}'
-			    	'}'
+			    	'},  
+			    	'"aggs" : {'
+    					'"messages" : {'
+      						'"filters" : {'
+        						'"filters" : ['
+          						+ES_FILTERS+
+					        ']'
+					      '}'
+					    '}'
+					  '}'
 			    "}";
 			}
 		</script>
