@@ -2,6 +2,34 @@
 	<head>
 		<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 		<script type="text/javascript">
+			var hash = window.location.hash;
+			var parts = hash.split("&");
+			var page = null;
+			var search_term = null;
+
+			for (i in parts) {
+				var key_value = parts[i].split("=");
+
+				if (key_value.length < 2) {
+					continue;
+				}
+
+				var key = key_value[0];
+				var value = key_value[1];
+
+				if (key == "page") {
+					page = parseInt(value);
+				}
+
+				if (key == "query") {
+					search_term = value;
+				}
+			}
+
+			if (page == null || isNaN(page)) {
+				page = 1;
+			}
+
 		    var ES_url = "";
 		    var facets_table_to_ES_field_map = ["cities" : "city", "employment_types" : "employment_type",
 		                                        "hierarchy_levels" : "hierarchy_level"];
@@ -40,12 +68,57 @@
 			$(document).ready(function() {
 				$("#search-button").click(function() {
 					var query = $("#search-field").text();
+					search_term = query;
+					reconstruct_hash();
 					var ES_query = get_ES_query(query);
-					$.get (ES_url, { json: ES_query+"_search?size"+PAGE_SIZE+"&from=0"}, function (res){
+					get_result_count(ES_query);
+					construct_pagination(result_count);
+					$.get (ES_url+"_search?size"+PAGE_SIZE+"&from="+(PAGE_SIZE*(page-1)), { json: ES_query}, function (res){
 					    
 					});
 				});
 			});
+
+			function reconstruct_hash() {
+				window.location.hash = "page="+page+"&query="+query;
+			}
+
+			function get_result_count(ES_query) {
+				$.get (ES_url+"_count", { json: ES_query}, function (res){
+					res = JSON.parse(res);
+					count = res.count;
+					populate_pagination(count);
+				});
+			}
+
+			function populate_pagination(count) {
+				var page_count = Math.ceil(count/PAGE_SIZE);
+				show_first_page(page_count);
+				show_prev_page(page_count);
+				show_current_page(page_count);
+				show_next_page(page_count);
+				show_last_page(page_count);
+			}
+
+			function show_first_page(page_count) {
+				
+			}
+
+			function show_prev_page(page_count) {
+				
+			}
+
+			function show_current_page(page_count) {
+				
+			}
+
+			function show_next_page(page_count) {
+				
+			}
+
+			function show_last_page(page_count) {
+				
+			}
 
 			function get_ES_query(query) {
 				var escaped_query = query.replace('"', '\"');
@@ -82,5 +155,6 @@
 		<input id="search-field"></input><button id="search-button">Search Button</button>
 		<div id="facets"></div>
 		<div id="results"></div>
+		<div id="pagination"></div>
 	</body>
 </html>
