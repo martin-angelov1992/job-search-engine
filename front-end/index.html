@@ -1,41 +1,55 @@
 <html>
-	<head>
-		<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
-		<script type="text/javascript">
-			var hash = window.location.hash;
-			var parts = hash.split("&");
+<head>
+<style>
+</style>
+<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
+<script type="text/javascript">
 			var page = null;
 			var search_term = null;
 
-			for (i in parts) {
-				var key_value = parts[i].split("=");
+			function trySearchByHash() {
+				var hash = window.location.hash;
 
-				if (key_value.length < 2) {
-					continue;
+				var parts = hash.split("&");
+
+				for (i in parts) {
+					var key_value = parts[i].split("=");
+
+					if (key_value.length < 2) {
+						continue;
+					}
+
+					var key = key_value[0];
+					var value = key_value[1];
+
+					if (key == "page") {
+						page = parseInt(value);
+					}
+
+					if (key == "query") {
+						search_term = value;
+					}
+
+					if (page == null || isNaN(page)) {
+						page = 1;
+					}
 				}
 
-				var key = key_value[0];
-				var value = key_value[1];
-
-				if (key == "page") {
-					page = parseInt(value);
-				}
-
-				if (key == "query") {
-					search_term = value;
-				}
+				perform_search(search_term, page);
 			}
 
-			if (page == null || isNaN(page)) {
-				page = 1;
-			}
+			trySearchByHash();
+
+			$(window).on('hashchange', function() {
+				trySearchByHash();
+			});
 
 		    var ES_url = "";
-		    var facets_table_to_ES_field_map = ["cities" : "city", "employment_types" : "employment_type",
-		                                        "hierarchy_levels" : "hierarchy_level"];
+		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
+		                                        "hierarchy_levels" : "hierarchy_level"};
 			var facets_table = {
-			                    cities:[]
-								employment_types:[]
+			                    cities:[],
+								employment_types:[],
 			                    hierarchy_levels:[]};
 
 			var ES_FILTERS = geterate_es_filters();
@@ -65,17 +79,41 @@
 				return es_filters;
 			}
 
+			function perform_search(query, new_page) {
+				if (query == null || query == "") {
+					return;
+				}
+
+				search_term = query;
+				var ES_query = get_ES_query(query);
+				get_result_count(ES_query);
+				construct_pagination(result_count);
+				$.get (ES_url+"_search?size"+PAGE_SIZE+"&from="+new_page, { json: ES_query}, function (res){
+					$("#results_table").empty();
+					$("#result_modals").empty();
+
+					res = JSON.parse(res);
+					var hits = res.hits.hits;
+
+					for (i in hits) {
+						var hit = hits[i];
+						var title = null;
+						var text = null;
+						var id = hit._id;
+
+						var element = "<tr class='result' id='result_"+id+"'><th>"+title+"</th></tr>";
+						var modal_element = "<div id='modal_result_"+id+"'>"+text+"</div>";
+						$("#results_table").append(element);
+						$("#result_modals").append(modal_element);
+					}
+				});
+			}
+
 			$(document).ready(function() {
 				$("#search-button").click(function() {
 					var query = $("#search-field").text();
-					search_term = query;
+					perform_search(query, 1);
 					reconstruct_hash();
-					var ES_query = get_ES_query(query);
-					get_result_count(ES_query);
-					construct_pagination(result_count);
-					$.get (ES_url+"_search?size"+PAGE_SIZE+"&from="+(PAGE_SIZE*(page-1)), { json: ES_query}, function (res){
-					    
-					});
 				});
 			});
 
@@ -91,8 +129,14 @@
 				});
 			}
 
-			function populate_pagination(count) {
-				var page_count = Math.ceil(count/PAGE_SIZE);
+			function populate_pagination(page_count) {
+				$("#pagination").empty();
+
+				if (page_count == 0) {
+					return;
+				}
+
+				var page_count = Math.ceil(page_count/PAGE_SIZE);
 				show_first_page(page_count);
 				show_prev_page(page_count);
 				show_current_page(page_count);
@@ -101,23 +145,89 @@
 			}
 
 			function show_first_page(page_count) {
-				
+				var new_element = null;
+
+				if (page == 1) {
+					new_element = "<span><<first</span>";
+				} else {
+					new_element = "<a href='"+generate_page_link(1)+"'><<first</a>";
+				}
+
+				$("#pagination").append(new_element+" ");
+			}
+
+			function generate_page_link(new_page) {
+				return "#page="+new_page+"&query="+query;
 			}
 
 			function show_prev_page(page_count) {
-				
+				var new_element = null;
+
+				if (page == 1) {
+					new_element = "<span><previous</span>";
+				} else {
+					new_element = "<a href='"+generate_page_link(page-1)+"'><previous</a>";
+				}
+
+				$("#pagination").append(new_element+" ");
 			}
 
 			function show_current_page(page_count) {
-				
+				var start_page = page-3;
+
+				if (start_page <= 1) {
+					start_page = 1;
+				}
+
+				var end_page = start_page + 6;
+
+				if (end_page > page_count-1) {
+					end_page = page_count;
+				}
+
+				if (start_page > 2) {
+					$("#pagination").append("...");
+				}
+
+				for (var i=start_page;i<end_page;++i) {
+					var new_element = null;
+
+					if (i == page) {
+						new_element = "<span>"+i+"</span>";
+					} else {
+						new_element = "<a href='"+generate_page_link(i)+"'>i</a>";
+					}
+
+					$("#pagination").append(new_element+" ");
+				}
+
+				if (end_page <= page_count-1) {
+					$("#pagination").append("...");
+				}
 			}
 
 			function show_next_page(page_count) {
-				
+				var new_element = null;
+
+				if (page == page_count) {
+					new_element = "<span>next></span>";
+				} else {
+					new_element = "<a href='"+generate_page_link(page+1)+"'>next></a>";
+				}
+
+				$("#pagination").append(new_element+" ");
 			}
 
 			function show_last_page(page_count) {
-				
+				var new_element = null;
+
+				if (page == page_count) {
+					new_element = "<span>last>></span>";
+				} else {
+					new_element = "<a href='"+generate_page_link(page_count)+"'>last>></a>";
+				}
+
+				$("#pagination").append(new_element);
 			}
 
 			function get_ES_query(query) {
@@ -137,7 +247,7 @@
 		    					'}'
 			    			']'
 			    		'}'
-			    	'},  
+			    	'}',  
 			    	'"aggs" : {'
     					'"messages" : {'
       						'"filters" : {'
@@ -150,11 +260,15 @@
 			    "}";
 			}
 		</script>
-	</head>
-	<body>
-		<input id="search-field"></input><button id="search-button">Search Button</button>
-		<div id="facets"></div>
-		<div id="results"></div>
-		<div id="pagination"></div>
-	</body>
+</head>
+<body>
+	<input id="search-field"></input>
+	<button id="search-button">Search Button</button>
+	<div id="facets"></div>
+	<div id="results">
+		<table id="results_table" style="width:100%"></table>
+	</div>
+	<div id="result_modals"></div>
+	<div id="pagination"></div>
+</body>
 </html>
