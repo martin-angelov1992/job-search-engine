@@ -5,11 +5,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import com.jaunt.Element;
-import com.jaunt.Elements;
-import com.jaunt.NotFound;
-import com.jaunt.ResponseException;
-import com.jaunt.UserAgent;
+import marto.job_search_engine.parser.Element;
+import marto.job_search_engine.parser.Elements;
+import marto.job_search_engine.parser.UserAgent;
+import marto.job_search_engine.parser.exceptions.NotFound;
+import marto.job_search_engine.parser.exceptions.ResponseException;
 
 public class Scrape {
 
@@ -56,7 +56,7 @@ public class Scrape {
 		Element jobListing;
 
 		try {
-			jobListing = agent.doc.findFirst("<div id=\"JobsListContainer\"");
+			jobListing = agent.getDoc().findFirst("<div id=\"JobsListContainer\"");
 		} catch (NotFound e) {
 			System.err.printf("Unable to find JobsListContainer element for page: ", link);
 			e.printStackTrace();
@@ -102,7 +102,7 @@ public class Scrape {
 	}
 
 	private void handleUnknownFormat(UserAgent agent, String link) {
-		String text = stripHtml(agent.doc.innerHTML());
+		String text = stripHtml(agent.getDoc().innerHTML());
 
 		String[] parts = link.split(" ");
 
@@ -126,21 +126,21 @@ public class Scrape {
 		Map<String, String> categoryTypes = new HashMap<>();
 
 		try {
-			jobTitle = agent.doc.findFirst("<div class=\"JobContent\">").getFirst("<div class=\"Title\">").innerHTML().trim();
+			jobTitle = agent.getDoc().findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Title\">").innerHTML().trim();
 		} catch (NotFound e1) {
 			e1.printStackTrace();
 			System.err.println("Unable to get job title.");
 		}
 
 		try {
-			companyName = agent.doc.findFirst("CompanyBlock").findFirst("Info").findFirst("Name").innerHTML().trim();
+			companyName = agent.getDoc().findFirst("CompanyBlock").findFirst("Info").findFirst("Name").innerHTML().trim();
 		} catch (NotFound e) {
 			System.err.println("Unable to extract company name");
 			e.printStackTrace();
 		}
 
 		try {
-			elements = agent.doc.findFirst("<div id=\"Nav\"").findFirst("<nav>").findFirst("<ul>").findEach("<li>");
+			elements = agent.getDoc().findFirst("<div id=\"Nav\"").findFirst("<nav>").findFirst("<ul>").findEach("<li>");
 		} catch (NotFound e) {
 			System.err.printf("Unable to get category elements for: %s", jobLink);
 			e.printStackTrace();
@@ -148,7 +148,7 @@ public class Scrape {
 		}
 
 		try {
-			jobText = agent.doc.findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Description\">").innerHTML().trim();
+			jobText = agent.getDoc().findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Description\">").innerHTML().trim();
 		} catch (NotFound e) {
 			System.err.printf("Unable to get job text for: %s", jobLink);
 			e.printStackTrace();

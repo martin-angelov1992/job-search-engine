@@ -3,7 +3,6 @@ package marto.job_search_engine;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.Date;
 import java.util.Map;
 
 import org.elasticsearch.action.index.IndexResponse;
