@@ -3,12 +3,26 @@
 <style>
 </style>
 <script type="text/javascript" src="jquery-3.1.1.min.js"></script>
+<script type="text/javascript" src="jquery-ui-1.12.1.custom/jquery-ui.js"></script>
 <script type="text/javascript">
 			var page = null;
 			var search_term = null;
 
+			var ES_url = "http://localhost:9200/";
+		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
+		                                        "hierarchy_levels" : "hierarchy_level"};
+			var facets_table = {
+			                    cities:[],
+								employment_types:[],
+			                    hierarchy_levels:[]};
+
+			var ES_FILTERS = geterate_es_filters();
+			var PAGE_SIZE = 15;
+
 			function trySearchByHash() {
 				var hash = window.location.hash;
+
+				hash = hash.substr(1, hash.length-1);
 
 				var parts = hash.split("&");
 
@@ -44,35 +58,15 @@
 				trySearchByHash();
 			});
 
-		    var ES_url = "";
-		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
-		                                        "hierarchy_levels" : "hierarchy_level"};
-			var facets_table = {
-			                    cities:[],
-								employment_types:[],
-			                    hierarchy_levels:[]};
-
-			var ES_FILTERS = geterate_es_filters();
-			var PAGE_SIZE = 15;
-
 			function geterate_es_filters() {
-				var es_filters = "";
-				var last_property = null;
-
-				for (last_property in facets_table);
+				var es_filters = [];
 
 				for (var key in facets_table) {
 					var facet_arr = facets_table[key];
 					for (i in facet_arr) {
-
 						var ES_field = facets_table_to_ES_field_map[key];
-						es_filters += '{"match" :{"'+ES_field+'": "';
-						es_filters += facet_arr[i];
-						es_filters += '"}}';
-	
-						if (key != last_property || i != facet_arr.length - 1) {
-							es_filters += ",";
-						}
+
+						es_filters.push(match_obj);
 					}
 				}
 
@@ -86,47 +80,55 @@
 
 				search_term = query;
 				var ES_query = get_ES_query(query);
+				console.log(JSON.stringify(ES_query));
 				get_result_count(ES_query);
-				construct_pagination(result_count);
-				$.get (ES_url+"_search?size"+PAGE_SIZE+"&from="+new_page, { json: ES_query}, function (res){
+				ES_query.aggs = {
+    					messages : {
+     						 filters : {
+       						 	filters : ES_FILTERS
+					       }
+					    }
+					};
+				$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+new_page, JSON.stringify(ES_query), function (res){
 					$("#results_table").empty();
 					$("#result_modals").empty();
 
-					res = JSON.parse(res);
 					var hits = res.hits.hits;
 
 					for (i in hits) {
 						var hit = hits[i];
-						var title = null;
-						var text = null;
+						var title = hit._source.jobTitle;
+						var text = hit._source.text;
 						var id = hit._id;
 
-						var element = "<tr class='result' id='result_"+id+"'><th>"+title+"</th></tr>";
-						var modal_element = "<div id='modal_result_"+id+"'>"+text+"</div>";
+						var modal_id = "modal_result_"+id;
+						var element = "<tr class='result' id='result_"+id+"'><th class='result'>"+title+"</th></tr>";
+						var modal_element = "<div id='"+modal_id+"'>"+text+"</div>";
 						$("#results_table").append(element);
 						$("#result_modals").append(modal_element);
+						$("#"+modal_id).dialog({autoOpen: false});
 					}
-				});
+				}, "json");
 			}
 
 			$(document).ready(function() {
 				$("#search-button").click(function() {
-					var query = $("#search-field").text();
+					var query = $("#search-field").val();
+					search_term = query;
 					perform_search(query, 1);
 					reconstruct_hash();
 				});
 			});
 
 			function reconstruct_hash() {
-				window.location.hash = "page="+page+"&query="+query;
+				window.location.hash = "page="+page+"&query="+search_term;
 			}
 
 			function get_result_count(ES_query) {
-				$.get (ES_url+"_count", { json: ES_query}, function (res){
-					res = JSON.parse(res);
+				$.post(ES_url+"_count", JSON.stringify(ES_query), function (res){
 					count = res.count;
 					populate_pagination(count);
-				});
+				}, "json");
 			}
 
 			function populate_pagination(page_count) {
@@ -148,25 +150,25 @@
 				var new_element = null;
 
 				if (page == 1) {
-					new_element = "<span><<first</span>";
+					new_element = "<span>&lt;&lt;first</span>";
 				} else {
-					new_element = "<a href='"+generate_page_link(1)+"'><<first</a>";
+					new_element = "<a href='"+generate_page_link(1)+"'>&lt;&lt;first</a>";
 				}
 
 				$("#pagination").append(new_element+" ");
 			}
 
 			function generate_page_link(new_page) {
-				return "#page="+new_page+"&query="+query;
+				return "#page="+new_page+"&query="+search_term;
 			}
 
 			function show_prev_page(page_count) {
 				var new_element = null;
 
 				if (page == 1) {
-					new_element = "<span><previous</span>";
+					new_element = "<span>&lt;previous</span>";
 				} else {
-					new_element = "<a href='"+generate_page_link(page-1)+"'><previous</a>";
+					new_element = "<a href='"+generate_page_link(page-1)+"'>&lt;previous</a>";
 				}
 
 				$("#pagination").append(new_element+" ");
@@ -185,25 +187,39 @@
 					end_page = page_count;
 				}
 
+				var pages_left = 9 - (end_page - start_page);
 				if (start_page > 2) {
 					$("#pagination").append("...");
 				}
 
-				for (var i=start_page;i<end_page;++i) {
+				print_page_interval(start_page, end_page);
+
+				if (end_page <= page_count-1) {
+					var next_start = page_count - pages_left;
+					var next_end = page_count;
+
+					if (next_start <= start_page + 1) {
+						next_start = start_page+1;
+					} else {
+						$("#pagination").append("...");
+					}
+
+					print_page_interval(next_start, next_end);
+				}
+			}
+
+			function print_page_interval(start, end) {
+				for (var i=start;i<end;++i) {
 					var new_element = null;
 
 					if (i == page) {
 						new_element = "<span>"+i+"</span>";
 					} else {
-						new_element = "<a href='"+generate_page_link(i)+"'>i</a>";
+						new_element = "<a href='"+generate_page_link(i)+"'>"+i+"</a>";
 					}
 
 					$("#pagination").append(new_element+" ");
-				}
-
-				if (end_page <= page_count-1) {
-					$("#pagination").append("...");
-				}
+				}				
 			}
 
 			function show_next_page(page_count) {
@@ -232,32 +248,31 @@
 
 			function get_ES_query(query) {
 				var escaped_query = query.replace('"', '\"');
-				var ES_query = "{"
-			    	'"query": {'
-			    		'"bool": {'
-			    			'"should": ['
-			    				'"match": {'
-			    					'"jobTitle": "'+query+'"'
-			    				'},'
-			    				'"match": {'
-			    					'"company": "'+query+'"'
-			    				'},'
-			    				'"match": {'
-		    						'"text": "'+query+'"'
-		    					'}'
-			    			']'
-			    		'}'
-			    	'}',  
-			    	'"aggs" : {'
-    					'"messages" : {'
-      						'"filters" : {'
-        						'"filters" : ['
-          						+ES_FILTERS+
-					        ']'
-					      '}'
-					    '}'
-					  '}'
-			    "}";
+				var ES_query = {
+			    	query: {
+			    		bool: {
+			    			should: [
+			    				{
+			    					match: {
+			    						jobTitle: query
+			    					}
+			    				},
+			    				{
+			    					match: {
+			    						company: query
+			    					}
+			    				},
+			    				{
+			    					match: {
+		    							text: query
+		    						}
+			    				}
+			    			]
+			    		}
+			    	}
+				};
+
+			    return ES_query;
 			}
 		</script>
 </head>

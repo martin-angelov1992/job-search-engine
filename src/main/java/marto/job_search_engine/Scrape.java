@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import marto.job_search_engine.parser.Element;
 import marto.job_search_engine.parser.Elements;
@@ -17,72 +19,103 @@ public class Scrape {
 
 	private Storage storage;
 
+	private static final String WEBSITE_URL = "http://www.jobtiger.bg";
+
+	private static ThreadPoolExecutor executor = (ThreadPoolExecutor)Executors.newFixedThreadPool(20);
+
 	public static void main(String[] args) throws InterruptedException {
 		new Scrape().run();
+
+		executor.shutdown();
+
+		if (UserAgent.getErrorCount() > 0) {
+			System.err.println("Error count: " + UserAgent.getErrorCount());
+		}
 	}
 
 	public void run() {
+		storage = new Storage();
+
 		ignoreCategoryTypes = new HashSet<>();
 		ignoreCategoryTypes.add("ТИП");
 		ignoreCategoryTypes.add("ВАЛИДНА ОТ");
 
 		UserAgent userAgent = new UserAgent();
 
-		for (int i = 1; i < 100; ++i) {
-			String link = "http://www.jobtiger.bg/obiavi-za-rabota/?_page=" + i;
+		int page = 1;
 
-			handleListingsPage(link, userAgent);
+		boolean hasMorePages = true;
+
+		while (hasMorePages) {
+			String link = "http://www.jobtiger.bg/obiavi-za-rabota/?_page=" + page;
+
+			hasMorePages = handleListingsPage(link, userAgent, page);
+
+			++page;
 		}
 	}
 
-	public void handleListingsPage(String link, UserAgent agent) {
-		Runnable r = () -> {
-			crawlListingsPage(link, agent);
-		};
-
-		Thread thread = new Thread(r);
-		thread.start();
+	public boolean handleListingsPage(String link, UserAgent agent, final int page) {
+		return crawlListingsPage(link, agent, page);
 	}
 
-	public void crawlListingsPage(String link, UserAgent agent) {
+	public boolean crawlListingsPage(String link, UserAgent agent, final int page) {
+		System.out.println("Handling page: "+link);
 		try {
 			agent.visit(link);
 		} catch (ResponseException e) {
-			System.err.printf("Error visiting link: %s", link);
+			System.err.printf("Error visiting link: %s\n", link);
 			e.printStackTrace();
-			return;
+			return true;
+		}
+
+		try {
+			Element element = agent.getDoc().findFirst("div.NotExistJobs");
+
+			if (element != null) {
+				return false;
+			}
+		} catch (NotFound e) {
+			// Do nothing. This is not last page.
 		}
 
 		Element jobListing;
 
 		try {
-			jobListing = agent.getDoc().findFirst("<div id=\"JobsListContainer\"");
+			jobListing = agent.getDoc().findFirst("div#JobsListContainer");
 		} catch (NotFound e) {
 			System.err.printf("Unable to find JobsListContainer element for page: ", link);
 			e.printStackTrace();
-			return;
+			return true;
 		}
 
 		Elements listElements;
 		try {
-			listElements = jobListing.findFirst("<ul>").findEach("<li>");
+			listElements = jobListing.findFirst("ul").findEach("li");
 		} catch (NotFound e1) {
 			System.err.printf("Some needed elements were not found for page: ", link);
 			e1.printStackTrace();
-			return;
+			return true;
 		}
 
 		for (Element listElement : listElements) {
-			try {
-				handleJobOffer(listElement.findFirst("<a>").getAt("href"), agent);
-			} catch (NotFound e) {
-				System.err.println("Unable to get link for job offer.");
-				e.printStackTrace();
-			}
+			Runnable r = () -> {
+				try {
+					handleJobOffer(listElement.findFirst("a").getAt("href"), new UserAgent(), page);
+				} catch (NotFound e) {
+					System.err.println("Unable to get link for job offer.");
+					e.printStackTrace();
+				}
+			};
+
+			executor.submit(r);
 		}
+
+		return true;
 	}
 
-	private void handleJobOffer(String link, UserAgent agent) {
+	private void handleJobOffer(String link, UserAgent agent, int page) {
+		link = makeFullLink(link);
 		try {
 			agent.visit(link);
 		} catch (ResponseException e) {
@@ -99,12 +132,22 @@ public class Scrape {
 		} else {
 			handleUnknownFormat(agent, link);
 		}
+
+		System.out.println("Handled: " + link + " from page " + page);
+	}
+
+	public String makeFullLink(String link) {
+		if (link.startsWith("http://") || link.startsWith("https://")) {
+			return link;
+		}
+
+		return WEBSITE_URL+link;
 	}
 
 	private void handleUnknownFormat(UserAgent agent, String link) {
 		String text = stripHtml(agent.getDoc().innerHTML());
 
-		String[] parts = link.split(" ");
+		String[] parts = link.split("/");
 
 		int lastIndex = parts.length-1;
 
@@ -126,21 +169,21 @@ public class Scrape {
 		Map<String, String> categoryTypes = new HashMap<>();
 
 		try {
-			jobTitle = agent.getDoc().findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Title\">").innerHTML().trim();
+			jobTitle = agent.getDoc().findFirst("div.JobContent").findFirst("div.Title").innerHTML().trim();
 		} catch (NotFound e1) {
 			e1.printStackTrace();
 			System.err.println("Unable to get job title.");
 		}
 
 		try {
-			companyName = agent.getDoc().findFirst("CompanyBlock").findFirst("Info").findFirst("Name").innerHTML().trim();
+			companyName = agent.getDoc().findFirst("div.CompanyBlock").findFirst("div.Info").findFirst("div.Name").innerHTML().trim();
 		} catch (NotFound e) {
 			System.err.println("Unable to extract company name");
 			e.printStackTrace();
 		}
 
 		try {
-			elements = agent.getDoc().findFirst("<div id=\"Nav\"").findFirst("<nav>").findFirst("<ul>").findEach("<li>");
+			elements = agent.getDoc().findFirst("div#Nav").findFirst("nav").findFirst("ul").findEach("li");
 		} catch (NotFound e) {
 			System.err.printf("Unable to get category elements for: %s", jobLink);
 			e.printStackTrace();
@@ -148,7 +191,7 @@ public class Scrape {
 		}
 
 		try {
-			jobText = agent.getDoc().findFirst("<div class=\"JobContent\">").findFirst("<div class=\"Description\">").innerHTML().trim();
+			jobText = agent.getDoc().findFirst("div.JobContent").findFirst("div.Description").innerHTML().trim();
 		} catch (NotFound e) {
 			System.err.printf("Unable to get job text for: %s", jobLink);
 			e.printStackTrace();
@@ -158,8 +201,8 @@ public class Scrape {
 			String categoryType;
 			String categoryTypeValue;
 			try {
-				categoryType = element.findFirst("<div class=\"Title\">").innerHTML().trim();
-				categoryTypeValue = element.findFirst("<div class=\"Value\">").innerHTML().trim();
+				categoryType = element.findFirst("div.Title").innerHTML().trim();
+				categoryTypeValue = element.findFirst("div.Value").innerHTML().trim();
 			} catch (NotFound e) {
 				System.err.printf("Unable to get category type elements for: %s", jobLink);
 				e.printStackTrace();
