@@ -1,6 +1,9 @@
 <html>
 <head>
 <style>
+.result {
+	cursor: pointer;
+}
 </style>
 <script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 <script type="text/javascript" src="jquery-ui-1.12.1.custom/jquery-ui.js"></script>
@@ -102,7 +105,7 @@
 						var id = hit._id;
 
 						var modal_id = "modal_result_"+id;
-						var element = "<tr class='result' id='result_"+id+"'><th class='result'>"+title+"</th></tr>";
+						var element = "<tr class='result-row' id='result_"+id+"'><th class='result' data-modal='"+modal_id+"'>"+title+"</th></tr>";
 						var modal_element = "<div id='"+modal_id+"'>"+text+"</div>";
 						$("#results_table").append(element);
 						$("#result_modals").append(modal_element);
@@ -112,6 +115,11 @@
 			}
 
 			$(document).ready(function() {
+				$("#results_table").on("click", ".result", function() {
+					var modal_id = $(this).attr("data-modal");
+					$("#"+modal_id).dialog("open");
+				});
+
 				$("#search-button").click(function() {
 					var query = $("#search-field").val();
 					search_term = query;
