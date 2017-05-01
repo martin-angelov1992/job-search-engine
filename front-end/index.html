@@ -1,5 +1,6 @@
 <html>
 <head>
+  <link rel="stylesheet" href="http://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 <style>
 .result {
 	cursor: pointer;
@@ -10,6 +11,9 @@
 <script type="text/javascript">
 			var page = null;
 			var search_term = null;
+			var search_by_facets = {};
+			var searchable_facets = ["city", "employment-type", "hierarchy-level"];
+			var facet_to_ES_field_mapping = {"city" : "Местоположение", "employment-type" : "Тип заетост", "hierarchy-level" : "Ниво в йерархията"};
 
 			var ES_url = "http://localhost:9200/";
 		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
@@ -50,9 +54,13 @@
 					if (page == null || isNaN(page)) {
 						page = 1;
 					}
+
+					if (searchable_facets.indexOf(key) > -1) {
+						search_by_facets[key] = value;
+					}
 				}
 
-				perform_search(search_term, page);
+				perform_search(search_term, page, search_by_facets);
 			}
 
 			trySearchByHash();
@@ -76,13 +84,13 @@
 				return es_filters;
 			}
 
-			function perform_search(query, new_page) {
+			function perform_search(query, new_page, search_by_facets) {
 				if (query == null || query == "") {
 					return;
 				}
 
 				search_term = query;
-				var ES_query = get_ES_query(query);
+				var ES_query = get_ES_query(query, search_by_facets);
 				console.log(JSON.stringify(ES_query));
 				get_result_count(ES_query);
 				ES_query.aggs = {
@@ -103,13 +111,25 @@
 						var title = hit._source.jobTitle;
 						var text = hit._source.text;
 						var id = hit._id;
+						var company = hit._source.company;
+
+						var extra_data = "";
+						for (key in hit._source) {
+							if (key == "text" || key == "jobTitle" || key == "company") {
+								continue;
+							}
+
+							var value = hit._source[key];
+
+							extra_data += key+": <i>"+value+"</i><br>";
+						}
 
 						var modal_id = "modal_result_"+id;
 						var element = "<tr class='result-row' id='result_"+id+"'><th class='result' data-modal='"+modal_id+"'>"+title+"</th></tr>";
-						var modal_element = "<div id='"+modal_id+"'>"+text+"</div>";
+						var modal_element = "<div id='"+modal_id+"' title='"+title+"'><b>"+company+"</b><pre>"+text+"</pre>"+extra_data+"</div>";
 						$("#results_table").append(element);
 						$("#result_modals").append(modal_element);
-						$("#"+modal_id).dialog({autoOpen: false});
+						$("#"+modal_id).dialog({autoOpen: false, width: 600});
 					}
 				}, "json");
 			}
@@ -129,7 +149,13 @@
 			});
 
 			function reconstruct_hash() {
-				window.location.hash = "page="+page+"&query="+search_term;
+				var new_hash = "page="+page+"&query="+search_term;
+
+				for (key in search_by_facets) {
+					new_hash += "&"+key+"="+search_by_facets[key];
+				}
+
+				window.location.hash = new_hash;
 			}
 
 			function get_result_count(ES_query) {
@@ -254,7 +280,7 @@
 				$("#pagination").append(new_element);
 			}
 
-			function get_ES_query(query) {
+			function get_ES_query(query, search_by_facets) {
 				var escaped_query = query.replace('"', '\"');
 				var ES_query = {
 			    	query: {
@@ -279,6 +305,13 @@
 			    		}
 			    	}
 				};
+
+				for (key in search_by_facets) {
+					var ES_field = facet_to_ES_field_mapping[key];
+					var filter_term = {};
+					filter_term[ES_field] = search_by_facets[key];
+					ES_query.query.constant_score.filter.bool.must.push(filter_term);
+				}
 
 			    return ES_query;
 			}
