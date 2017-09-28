@@ -13,7 +13,7 @@
 			var search_term = null;
 			var search_by_facets = {};
 			var searchable_facets = ["city", "employment-type", "hierarchy-level"];
-			var facet_to_ES_field_mapping = {"city" : "Местоположение", "employment-type" : "Тип заетост", "hierarchy-level" : "Ниво в йерархията"};
+			var facet_to_ES_field_mapping = {"city" : "ÐœÐµÑ�Ñ‚Ð¾Ð¿Ð¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "employment-type" : "Ð¢Ð¸Ð¿ Ð·Ð°ÐµÑ‚Ð¾Ñ�Ñ‚", "hierarchy-level" : "Ð�Ð¸Ð²Ð¾ Ð² Ð¹ÐµÑ€Ð°Ñ€Ñ…Ð¸Ñ�Ñ‚Ð°"};
 
 			var ES_url = "http://localhost:9200/";
 		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
@@ -27,6 +27,8 @@
 			var PAGE_SIZE = 15;
 
 			function trySearchByHash() {
+				console.log("trying to search by hash");
+
 				var hash = window.location.hash;
 
 				hash = hash.substr(1, hash.length-1);
@@ -51,13 +53,17 @@
 						search_term = value;
 					}
 
-					if (page == null || isNaN(page)) {
+					if (!page) {
 						page = 1;
 					}
 
 					if (searchable_facets.indexOf(key) > -1) {
 						search_by_facets[key] = value;
 					}
+				}
+
+				if (!page) {
+					page = 1;
 				}
 
 				perform_search(search_term, page, search_by_facets);
@@ -85,10 +91,6 @@
 			}
 
 			function perform_search(query, new_page, search_by_facets) {
-				if (query == null || query == "") {
-					return;
-				}
-
 				search_term = query;
 				var ES_query = get_ES_query(query, search_by_facets);
 				console.log(JSON.stringify(ES_query));
@@ -132,6 +134,9 @@
 						$("#"+modal_id).dialog({autoOpen: false, width: 600});
 					}
 				}, "json");
+				
+				console.log("setting page to"+new_page);
+				page = new_page;
 			}
 
 			$(document).ready(function() {
@@ -140,22 +145,29 @@
 					$("#"+modal_id).dialog("open");
 				});
 
-				$("#search-button").click(function() {
+				$("#search-form").submit(function(e) {
+					e.preventDefault();
 					var query = $("#search-field").val();
 					search_term = query;
 					perform_search(query, 1);
+
 					reconstruct_hash();
 				});
 			});
 
 			function reconstruct_hash() {
-				var new_hash = "page="+page+"&query="+search_term;
+				var new_hash = "#page="+page+"&query="+search_term;
 
 				for (key in search_by_facets) {
 					new_hash += "&"+key+"="+search_by_facets[key];
 				}
 
-				window.location.hash = new_hash;
+				if(history.pushState) {
+				    history.pushState(null, null, new_hash);
+				}
+				else {
+				    location.hash = new_hash;
+				}
 			}
 
 			function get_result_count(ES_query) {
@@ -209,6 +221,7 @@
 			}
 
 			function show_current_page(page_count) {
+				console.log("Showing current page with page count: "+page_count)
 				var start_page = page-3;
 
 				if (start_page <= 1) {
@@ -217,7 +230,7 @@
 
 				var end_page = start_page + 6;
 
-				if (end_page > page_count-1) {
+				if (end_page > page_count) {
 					end_page = page_count;
 				}
 
@@ -243,7 +256,7 @@
 			}
 
 			function print_page_interval(start, end) {
-				for (var i=start;i<end;++i) {
+				for (var i=start;i<=end;++i) {
 					var new_element = null;
 
 					if (i == page) {
@@ -281,6 +294,10 @@
 			}
 
 			function get_ES_query(query, search_by_facets) {
+				if (!query) {
+					query = "";
+				}
+
 				var escaped_query = query.replace('"', '\"');
 				var ES_query = {
 			    	query: {
@@ -318,8 +335,10 @@
 		</script>
 </head>
 <body>
-	<input id="search-field"></input>
-	<button id="search-button">Search Button</button>
+	<form id="search-form">
+		<input id="search-field"></input>
+		<button id="search-button">Search Button</button>
+	</form>
 	<div id="facets"></div>
 	<div id="results">
 		<table id="results_table" style="width:100%"></table>
