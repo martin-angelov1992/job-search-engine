@@ -5,333 +5,429 @@
 .result {
 	cursor: pointer;
 }
+
+.facets_column input[type=checkbox] {
+	float:left;
+	clear:left;
+}
+
+.facets_column {
+	float:left;
+	margin-right:50px;
+}
+
+.facet_count {
+	float:left;
+	margin-left:5px;
+}
 </style>
 <script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 <script type="text/javascript" src="jquery-ui-1.12.1.custom/jquery-ui.js"></script>
 <script type="text/javascript">
-			var page = null;
-			var search_term = null;
-			var search_by_facets = {};
-			var searchable_facets = ["city", "employment-type", "hierarchy-level"];
-			var facet_to_ES_field_mapping = {"city" : "ÐœÐµÑ�Ñ‚Ð¾Ð¿Ð¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "employment-type" : "Ð¢Ð¸Ð¿ Ð·Ð°ÐµÑ‚Ð¾Ñ�Ñ‚", "hierarchy-level" : "Ð�Ð¸Ð²Ð¾ Ð² Ð¹ÐµÑ€Ð°Ñ€Ñ…Ð¸Ñ�Ñ‚Ð°"};
+	var page = null;
+	var search_term = null;
+	var search_by_facets = {};
+	var searchable_facets = ["city", "employment_type", "hierarchy_level"];
+	var facet_to_ES_field_mapping = {"city" : "Град", "employment_type" : "Тип Заетост", 
+			"hierarchy_level" : "Ниво в Ерархията"};
 
-			var ES_url = "http://localhost:9200/";
-		    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
-		                                        "hierarchy_levels" : "hierarchy_level"};
-			var facets_table = {
-			                    cities:[],
-								employment_types:[],
-			                    hierarchy_levels:[]};
+	var ES_url = "http://localhost:9200/";
+    var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
+                                        "hierarchy_levels" : "hierarchy_level"};
+	var facets_table = {
+	                    cities:["София", "Враца", "Видин", "Пловдив"],
+						employment_types:["Full Time", "Part time"],
+	                    hierarchy_levels:["Ниско", "Високо", "Средно"]};
 
-			var ES_FILTERS = geterate_es_filters();
-			var PAGE_SIZE = 15;
+	var ES_FILTERS = geterate_es_filters();
 
-			function trySearchByHash() {
-				console.log("trying to search by hash");
+	$(document).ready(function(){
+		add_facet_columns();
+		add_facet_options();
+		trySearchByHash();
 
-				var hash = window.location.hash;
+		$("[data-facet-checkbox]").change(onSelectedFacetsChange());
+	});
 
-				hash = hash.substr(1, hash.length-1);
+	function onSelectedFacetsChange() {
+		var selected_facets = getSelectedFacetsTable();
+	}
 
-				var parts = hash.split("&");
+	function getSelectedFacetsTable() {
+		var table = {};
 
-				for (i in parts) {
-					var key_value = parts[i].split("=");
+		for (key in facets_table) {
+			var values = facets_table[key]
 
-					if (key_value.length < 2) {
+			table[key] = [];
+
+			for (i in values) {
+				var value = values[i];
+			}
+		}
+
+		return table;
+	}
+
+	function add_facet_options() {
+		for (key in facets_table) {
+			var values = facets_table[key];
+
+			var singular_key = facets_table_to_ES_field_map[key];
+
+			for (i in values) {
+				var value = values[i];
+				
+				console.log("Adding "+value+" facet to "+singular_key+"_facets");
+				$("#"+singular_key+"_facets").append("<input type='checkbox' data-facet-checkbox='"+singular_key+"' value='"+value+"'/><span style='clear:right;float:left'>"+value
+				+"</span><span data-facet-key='"+key+"' data-facet-value='"+value+"' class='facet_count'></span>");	
+			}
+		}
+	}
+
+	console.log("Generating ES filters: %o", ES_FILTERS);
+	
+	var PAGE_SIZE = 15;
+
+	function trySearchByHash() {
+		console.log("trying to search by hash");
+
+		var hash = window.location.hash;
+
+		hash = hash.substr(1, hash.length-1);
+
+		var parts = hash.split("&");
+
+		for (i in parts) {
+			var key_value = parts[i].split("=");
+
+			if (key_value.length < 2) {
+				continue;
+			}
+
+			var key = key_value[0];
+			var value = key_value[1];
+
+			if (key == "page") {
+				page = parseInt(value);
+			}
+
+			if (key == "query") {
+				search_term = value;
+			}
+
+			if (!page) {
+				page = 1;
+			}
+
+			if (searchable_facets.indexOf(key) > -1) {
+				search_by_facets[key] = value;
+			}
+		}
+
+		if (!page) {
+			page = 1;
+		}
+
+		perform_search(search_term, page, search_by_facets);
+	}
+
+	$(window).on('hashchange', function() {
+		trySearchByHash();
+	});
+
+	function geterate_es_filters() {
+		var es_filters = {};
+
+		for (var key in facets_table) {
+			var facet_arr = facets_table[key];
+			for (i in facet_arr) {
+				var ES_field = facets_table_to_ES_field_map[key];
+
+				es_filters[key] = {terms: {field: ES_field+".keyword"}};
+			}
+		}
+
+		return es_filters;
+	}
+
+	function perform_search(query, new_page, search_by_facets) {
+		search_term = query;
+		var ES_query = get_ES_query(query, search_by_facets);
+		console.log(JSON.stringify(ES_query));
+		get_result_count(ES_query);
+		ES_query.aggs = ES_FILTERS;
+		$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+new_page, JSON.stringify(ES_query), function (res){
+			$("#results_table").empty();
+			$("#result_modals").empty();
+
+			var hits = res.hits.hits;
+
+			for (i in hits) {
+				var hit = hits[i];
+				var title = hit._source.jobTitle;
+				var text = hit._source.text;
+				var id = hit._id;
+				var company = hit._source.company;
+
+				var extra_data = "";
+				for (key in hit._source) {
+					if (key == "text" || key == "jobTitle" || key == "company") {
 						continue;
 					}
 
-					var key = key_value[0];
-					var value = key_value[1];
+					var value = hit._source[key];
 
-					if (key == "page") {
-						page = parseInt(value);
-					}
-
-					if (key == "query") {
-						search_term = value;
-					}
-
-					if (!page) {
-						page = 1;
-					}
-
-					if (searchable_facets.indexOf(key) > -1) {
-						search_by_facets[key] = value;
-					}
+					extra_data += key+": <i>"+value+"</i><br>";
 				}
 
-				if (!page) {
-					page = 1;
-				}
-
-				perform_search(search_term, page, search_by_facets);
+				var modal_id = "modal_result_"+id;
+				var element = "<tr class='result-row' id='result_"+id+"'><th class='result' data-modal='"+modal_id+"'>"+title+"</th></tr>";
+				var modal_element = "<div id='"+modal_id+"' title='"+title+"'><b>"+company+"</b><pre>"+text+"</pre>"+extra_data+"</div>";
+				$("#results_table").append(element);
+				$("#result_modals").append(modal_element);
+				$("#"+modal_id).dialog({autoOpen: false, width: 600});
 			}
 
-			trySearchByHash();
+			add_facets_info(res.aggregations);
+		}, "json");
+		
+		console.log("setting page to"+new_page);
+		page = new_page;
+	}
 
-			$(window).on('hashchange', function() {
-				trySearchByHash();
-			});
+	function add_facet_columns() {
+		for (key in facet_to_ES_field_mapping) {
+			var facet_title = facet_to_ES_field_mapping[key];
+			$("#facets").append("<div id='"+key+"_facets' class='facets_column'><span style='float:left'>"+facet_title+
+					"</span></div>");
+		}
+	}
 
-			function geterate_es_filters() {
-				var es_filters = [];
+	function add_facets_info(aggregations) {
+		for (key in facets_table) {
+			var values = facets_table[key];
 
-				for (var key in facets_table) {
-					var facet_arr = facets_table[key];
-					for (i in facet_arr) {
-						var ES_field = facets_table_to_ES_field_map[key];
+			for (i in values) {
+				var title = values[i];
 
-						es_filters.push(match_obj);
-					}
-				}
+				var count = get_count_from_aggregations(aggregations[key].buckets, title);
 
-				return es_filters;
+				add_facet_info(key, title, count);
+			}
+		}
+	}
+
+	function get_count_from_aggregations(buckets, title) {
+		for (i in buckets) {
+			var bucket = buckets[i];
+
+			if (title == bucket.key) {
+				return bucket.doc_count;
+			}
+		}
+
+		return 0;
+	}
+
+	function add_facet_info(key, title, count) {
+		console.log("adding facet info with selector .facet_count[data-facet-key="+key+"][data-facet-value='"+title+"']");
+		$(".facet_count[data-facet-key="+key+"][data-facet-value='"+title+"']").text("("+count+")");
+	}
+
+	$(document).ready(function() {
+		$("#results_table").on("click", ".result", function() {
+			var modal_id = $(this).attr("data-modal");
+			$("#"+modal_id).dialog("open");
+		});
+
+		$("#search-form").submit(function(e) {
+			e.preventDefault();
+			var query = $("#search-field").val();
+			search_term = query;
+			perform_search(query, 1);
+
+			reconstruct_hash();
+		});
+	});
+
+	function reconstruct_hash() {
+		var new_hash = "#page="+page+"&query="+search_term;
+
+		for (key in search_by_facets) {
+			new_hash += "&"+key+"="+search_by_facets[key];
+		}
+
+		if(history.pushState) {
+		    history.pushState(null, null, new_hash);
+		}
+		else {
+		    location.hash = new_hash;
+		}
+	}
+
+	function get_result_count(ES_query) {
+		$.post(ES_url+"_count", JSON.stringify(ES_query), function (res){
+			count = res.count;
+			populate_pagination(count);
+		}, "json");
+	}
+
+	function populate_pagination(page_count) {
+		$("#pagination").empty();
+
+		if (page_count == 0) {
+			return;
+		}
+
+		var page_count = Math.ceil(page_count/PAGE_SIZE);
+		show_first_page(page_count);
+		show_prev_page(page_count);
+		show_current_page(page_count);
+		show_next_page(page_count);
+		show_last_page(page_count);
+	}
+
+	function show_first_page(page_count) {
+		var new_element = null;
+
+		if (page == 1) {
+			new_element = "<span>&lt;&lt;first</span>";
+		} else {
+			new_element = "<a href='"+generate_page_link(1)+"'>&lt;&lt;first</a>";
+		}
+
+		$("#pagination").append(new_element+" ");
+	}
+
+	function generate_page_link(new_page) {
+		return "#page="+new_page+"&query="+search_term;
+	}
+
+	function show_prev_page(page_count) {
+		var new_element = null;
+
+		if (page == 1) {
+			new_element = "<span>&lt;previous</span>";
+		} else {
+			new_element = "<a href='"+generate_page_link(page-1)+"'>&lt;previous</a>";
+		}
+
+		$("#pagination").append(new_element+" ");
+	}
+
+	function show_current_page(page_count) {
+		console.log("Showing current page with page count: "+page_count)
+		var start_page = page-3;
+
+		if (start_page <= 1) {
+			start_page = 1;
+		}
+
+		var end_page = start_page + 6;
+
+		if (end_page > page_count) {
+			end_page = page_count;
+		}
+
+		var pages_left = 9 - (end_page - start_page);
+		if (start_page > 2) {
+			$("#pagination").append("...");
+		}
+
+		print_page_interval(start_page, end_page);
+
+		if (end_page <= page_count-1) {
+			var next_start = page_count - pages_left;
+			var next_end = page_count;
+
+			if (next_start <= start_page + 1) {
+				next_start = start_page+1;
+			} else {
+				$("#pagination").append("...");
 			}
 
-			function perform_search(query, new_page, search_by_facets) {
-				search_term = query;
-				var ES_query = get_ES_query(query, search_by_facets);
-				console.log(JSON.stringify(ES_query));
-				get_result_count(ES_query);
-				ES_query.aggs = {
-    					messages : {
-     						 filters : {
-       						 	filters : ES_FILTERS
-					       }
-					    }
-					};
-				$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+new_page, JSON.stringify(ES_query), function (res){
-					$("#results_table").empty();
-					$("#result_modals").empty();
+			print_page_interval(next_start, next_end);
+		}
+	}
 
-					var hits = res.hits.hits;
+	function print_page_interval(start, end) {
+		for (var i=start;i<=end;++i) {
+			var new_element = null;
 
-					for (i in hits) {
-						var hit = hits[i];
-						var title = hit._source.jobTitle;
-						var text = hit._source.text;
-						var id = hit._id;
-						var company = hit._source.company;
-
-						var extra_data = "";
-						for (key in hit._source) {
-							if (key == "text" || key == "jobTitle" || key == "company") {
-								continue;
-							}
-
-							var value = hit._source[key];
-
-							extra_data += key+": <i>"+value+"</i><br>";
-						}
-
-						var modal_id = "modal_result_"+id;
-						var element = "<tr class='result-row' id='result_"+id+"'><th class='result' data-modal='"+modal_id+"'>"+title+"</th></tr>";
-						var modal_element = "<div id='"+modal_id+"' title='"+title+"'><b>"+company+"</b><pre>"+text+"</pre>"+extra_data+"</div>";
-						$("#results_table").append(element);
-						$("#result_modals").append(modal_element);
-						$("#"+modal_id).dialog({autoOpen: false, width: 600});
-					}
-				}, "json");
-				
-				console.log("setting page to"+new_page);
-				page = new_page;
+			if (i == page) {
+				new_element = "<span>"+i+"</span>";
+			} else {
+				new_element = "<a href='"+generate_page_link(i)+"'>"+i+"</a>";
 			}
 
-			$(document).ready(function() {
-				$("#results_table").on("click", ".result", function() {
-					var modal_id = $(this).attr("data-modal");
-					$("#"+modal_id).dialog("open");
-				});
+			$("#pagination").append(new_element+" ");
+		}				
+	}
 
-				$("#search-form").submit(function(e) {
-					e.preventDefault();
-					var query = $("#search-field").val();
-					search_term = query;
-					perform_search(query, 1);
+	function show_next_page(page_count) {
+		var new_element = null;
 
-					reconstruct_hash();
-				});
-			});
+		if (page == page_count) {
+			new_element = "<span>next></span>";
+		} else {
+			new_element = "<a href='"+generate_page_link(page+1)+"'>next></a>";
+		}
 
-			function reconstruct_hash() {
-				var new_hash = "#page="+page+"&query="+search_term;
+		$("#pagination").append(new_element+" ");
+	}
 
-				for (key in search_by_facets) {
-					new_hash += "&"+key+"="+search_by_facets[key];
-				}
+	function show_last_page(page_count) {
+		var new_element = null;
 
-				if(history.pushState) {
-				    history.pushState(null, null, new_hash);
-				}
-				else {
-				    location.hash = new_hash;
-				}
-			}
+		if (page == page_count) {
+			new_element = "<span>last>></span>";
+		} else {
+			new_element = "<a href='"+generate_page_link(page_count)+"'>last>></a>";
+		}
 
-			function get_result_count(ES_query) {
-				$.post(ES_url+"_count", JSON.stringify(ES_query), function (res){
-					count = res.count;
-					populate_pagination(count);
-				}, "json");
-			}
+		$("#pagination").append(new_element);
+	}
 
-			function populate_pagination(page_count) {
-				$("#pagination").empty();
+	function get_ES_query(query, search_by_facets) {
+		if (!query) {
+			query = "";
+		}
 
-				if (page_count == 0) {
-					return;
-				}
+		var escaped_query = query.replace('"', '\"');
+		var ES_query = {
+	    	query: {
+	    		bool: {
+	    			should: [
+	    				{
+	    					match: {
+	    						jobTitle: query
+	    					}
+	    				},
+	    				{
+	    					match: {
+	    						company: query
+	    					}
+	    				},
+	    				{
+	    					match: {
+    							text: query
+    						}
+	    				}
+	    			]
+	    		}
+	    	}
+		};
 
-				var page_count = Math.ceil(page_count/PAGE_SIZE);
-				show_first_page(page_count);
-				show_prev_page(page_count);
-				show_current_page(page_count);
-				show_next_page(page_count);
-				show_last_page(page_count);
-			}
+		for (key in search_by_facets) {
+			var ES_field = facet_to_ES_field_mapping[key];
+			var filter_term = {};
+			filter_term[ES_field] = search_by_facets[key];
+			ES_query.query.constant_score.filter.bool.must.push(filter_term);
+		}
 
-			function show_first_page(page_count) {
-				var new_element = null;
-
-				if (page == 1) {
-					new_element = "<span>&lt;&lt;first</span>";
-				} else {
-					new_element = "<a href='"+generate_page_link(1)+"'>&lt;&lt;first</a>";
-				}
-
-				$("#pagination").append(new_element+" ");
-			}
-
-			function generate_page_link(new_page) {
-				return "#page="+new_page+"&query="+search_term;
-			}
-
-			function show_prev_page(page_count) {
-				var new_element = null;
-
-				if (page == 1) {
-					new_element = "<span>&lt;previous</span>";
-				} else {
-					new_element = "<a href='"+generate_page_link(page-1)+"'>&lt;previous</a>";
-				}
-
-				$("#pagination").append(new_element+" ");
-			}
-
-			function show_current_page(page_count) {
-				console.log("Showing current page with page count: "+page_count)
-				var start_page = page-3;
-
-				if (start_page <= 1) {
-					start_page = 1;
-				}
-
-				var end_page = start_page + 6;
-
-				if (end_page > page_count) {
-					end_page = page_count;
-				}
-
-				var pages_left = 9 - (end_page - start_page);
-				if (start_page > 2) {
-					$("#pagination").append("...");
-				}
-
-				print_page_interval(start_page, end_page);
-
-				if (end_page <= page_count-1) {
-					var next_start = page_count - pages_left;
-					var next_end = page_count;
-
-					if (next_start <= start_page + 1) {
-						next_start = start_page+1;
-					} else {
-						$("#pagination").append("...");
-					}
-
-					print_page_interval(next_start, next_end);
-				}
-			}
-
-			function print_page_interval(start, end) {
-				for (var i=start;i<=end;++i) {
-					var new_element = null;
-
-					if (i == page) {
-						new_element = "<span>"+i+"</span>";
-					} else {
-						new_element = "<a href='"+generate_page_link(i)+"'>"+i+"</a>";
-					}
-
-					$("#pagination").append(new_element+" ");
-				}				
-			}
-
-			function show_next_page(page_count) {
-				var new_element = null;
-
-				if (page == page_count) {
-					new_element = "<span>next></span>";
-				} else {
-					new_element = "<a href='"+generate_page_link(page+1)+"'>next></a>";
-				}
-
-				$("#pagination").append(new_element+" ");
-			}
-
-			function show_last_page(page_count) {
-				var new_element = null;
-
-				if (page == page_count) {
-					new_element = "<span>last>></span>";
-				} else {
-					new_element = "<a href='"+generate_page_link(page_count)+"'>last>></a>";
-				}
-
-				$("#pagination").append(new_element);
-			}
-
-			function get_ES_query(query, search_by_facets) {
-				if (!query) {
-					query = "";
-				}
-
-				var escaped_query = query.replace('"', '\"');
-				var ES_query = {
-			    	query: {
-			    		bool: {
-			    			should: [
-			    				{
-			    					match: {
-			    						jobTitle: query
-			    					}
-			    				},
-			    				{
-			    					match: {
-			    						company: query
-			    					}
-			    				},
-			    				{
-			    					match: {
-		    							text: query
-		    						}
-			    				}
-			    			]
-			    		}
-			    	}
-				};
-
-				for (key in search_by_facets) {
-					var ES_field = facet_to_ES_field_mapping[key];
-					var filter_term = {};
-					filter_term[ES_field] = search_by_facets[key];
-					ES_query.query.constant_score.filter.bool.must.push(filter_term);
-				}
-
-			    return ES_query;
-			}
+	    return ES_query;
+	}
 		</script>
 </head>
 <body>

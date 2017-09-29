@@ -32,7 +32,7 @@ public class FillTestJobs {
 	}};
 
 	private static final List<Job> TEST_JOBS = new LinkedList<Job>(){{
-		for (int i=0;i<10;++i) {
+		for (int i=0;i<50;++i) {
 			add(new Job("Company 1", "Java", "Requirements: None"));
 			add(new Job("Another one", "C++", "Requirements: 3 years"));
 			add(new Job("Some Company", ".NET", "Requirements: C++"));
@@ -74,8 +74,6 @@ public class FillTestJobs {
 		int counter = 0;
 		
 		for (Entry<String, List<String>> entry : AVAILABLE_CATEGORY_TYPES.entrySet()) {
-			++counter;
-
 			List<String> values = entry.getValue();
 			
 			int index = ThreadLocalRandom.current().nextInt(0, values.size());
@@ -85,6 +83,7 @@ public class FillTestJobs {
 			if (counter == size) {
 				break;
 			}
+			++counter;
 		}
 
 		return categoryTypes;
