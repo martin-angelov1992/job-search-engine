@@ -43,26 +43,36 @@
 
 	$(document).ready(function(){
 		add_facet_columns();
-		add_facet_options();
 		trySearchByHash();
+		add_facet_options();
 
-		$("[data-facet-checkbox]").change(onSelectedFacetsChange());
+		$("[data-facet-checkbox]").change(onSelectedFacetsChange);
 	});
 
 	function onSelectedFacetsChange() {
-		var selected_facets = getSelectedFacetsTable();
+		search_by_facets = getSelectedFacetsTable();
+		console.log("Selected facets are: %o", search_by_facets);
+		perform_search(search_term, 1, search_by_facets);
+		reconstruct_hash();
+		page = 1;
 	}
 
 	function getSelectedFacetsTable() {
 		var table = {};
 
 		for (key in facets_table) {
-			var values = facets_table[key]
+			var values = facets_table[key];
+			key = facets_table_to_ES_field_map[key];
 
 			table[key] = [];
 
 			for (i in values) {
 				var value = values[i];
+
+				console.log('Searching for facet with selector: [data-facet-checkbox='+key+'][value="'+value+'"]:checked');
+				if ($('[data-facet-checkbox='+key+'][value="'+value+'"]:checked').length > 0) {
+					table[key].push(value);
+				}
 			}
 		}
 
@@ -78,8 +88,14 @@
 			for (i in values) {
 				var value = values[i];
 				
+				var checked = false;
+				
+				if (search_by_facets[singular_key] && search_by_facets[singular_key].indexOf(value) > -1) {
+					checked = true;
+				}
+
 				console.log("Adding "+value+" facet to "+singular_key+"_facets");
-				$("#"+singular_key+"_facets").append("<input type='checkbox' data-facet-checkbox='"+singular_key+"' value='"+value+"'/><span style='clear:right;float:left'>"+value
+				$("#"+singular_key+"_facets").append("<input type='checkbox' data-facet-checkbox='"+singular_key+"' value='"+value+"'"+(checked ? " checked" : "")+"/><span style='clear:right;float:left'>"+value
 				+"</span><span data-facet-key='"+key+"' data-facet-value='"+value+"' class='facet_count'></span>");	
 			}
 		}
@@ -121,7 +137,7 @@
 			}
 
 			if (searchable_facets.indexOf(key) > -1) {
-				search_by_facets[key] = value;
+				search_by_facets[key] = value.split(",");
 			}
 		}
 
@@ -144,7 +160,7 @@
 			for (i in facet_arr) {
 				var ES_field = facets_table_to_ES_field_map[key];
 
-				es_filters[key] = {terms: {field: ES_field+".keyword"}};
+				es_filters[key] = {terms: {field: ES_field}};
 			}
 		}
 
@@ -157,7 +173,7 @@
 		console.log(JSON.stringify(ES_query));
 		get_result_count(ES_query);
 		ES_query.aggs = ES_FILTERS;
-		$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+new_page, JSON.stringify(ES_query), function (res){
+		$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+(new_page-1)*PAGE_SIZE, JSON.stringify(ES_query), function (res){
 			$("#results_table").empty();
 			$("#result_modals").empty();
 
@@ -255,7 +271,9 @@
 		var new_hash = "#page="+page+"&query="+search_term;
 
 		for (key in search_by_facets) {
-			new_hash += "&"+key+"="+search_by_facets[key];
+			if (search_by_facets[key].length) {
+				new_hash += "&"+key+"="+search_by_facets[key].join();
+			}
 		}
 
 		if(history.pushState) {
@@ -395,35 +413,61 @@
 		}
 
 		var escaped_query = query.replace('"', '\"');
-		var ES_query = {
-	    	query: {
-	    		bool: {
-	    			should: [
-	    				{
-	    					match: {
-	    						jobTitle: query
-	    					}
-	    				},
-	    				{
-	    					match: {
-	    						company: query
-	    					}
-	    				},
-	    				{
-	    					match: {
-    							text: query
-    						}
-	    				}
-	    			]
-	    		}
-	    	}
-		};
+		var ES_query = {  
+				   "query":{  
+					      "bool":{  
+					         "must":[  
+					            {
+									"bool": {
+										"should":[
+											{  
+											   "match":{  
+												  "jobTitle":query
+											   }
+											},
+											{  
+											   "match":{  
+												  "company":query
+											   }
+											},
+											{  
+											   "match":{  
+												  "text":query
+											   }
+											}
+										]
+									}
+								}
+					         ]
+					      }
+					   }
+					}
+		
+		if (search_by_facets.length > 0) {
+			ES_query.query.bool.must = [];
+		}
 
 		for (key in search_by_facets) {
-			var ES_field = facet_to_ES_field_mapping[key];
-			var filter_term = {};
-			filter_term[ES_field] = search_by_facets[key];
-			ES_query.query.constant_score.filter.bool.must.push(filter_term);
+			var values = search_by_facets[key];
+
+			if (!values.length) {
+				continue;
+			}
+
+			var orQuery = {bool: {should: []}};
+			
+			if (!ES_query.query.bool.must) {
+				ES_query.query.bool.must = [];
+			}
+
+			ES_query.query.bool.must.push(orQuery);
+			
+			for (i in values) {
+				var value = values[i];
+				var orFilter = {term: {}};
+				orFilter.term[key] = value;
+				orQuery.bool.should.push(orFilter);
+			}
 		}
 
 	    return ES_query;
