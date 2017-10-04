@@ -23,6 +23,7 @@
 </style>
 <script type="text/javascript" src="jquery-3.1.1.min.js"></script>
 <script type="text/javascript" src="jquery-ui-1.12.1.custom/jquery-ui.js"></script>
+<script type="text/javascript" src="html5-canvas-bar-graph.js"></script>
 <script type="text/javascript">
 	var page = null;
 	var search_term = null;
@@ -40,6 +41,7 @@
 	                    hierarchy_levels:["Ниско", "Високо", "Средно"]};
 
 	var ES_FILTERS = geterate_es_filters();
+	var graph2 = null;
 
 	$(document).ready(function(){
 		add_facet_columns();
@@ -47,7 +49,21 @@
 		add_facet_options();
 
 		$("[data-facet-checkbox]").change(onSelectedFacetsChange);
+		initGraph();'
 	});
+
+	function initGraph() {
+		graph2 = new BarGraph(document.getElementById("graph").getContext("2d"));
+		graph2.margin = 2;
+		graph2.width = 450;
+		graph2.height = 150;
+		graph2.xAxisLabelArr = facets_table.cities;
+	}
+
+	function updateGraph() {
+		
+		graph2.update([Math.random() * 20, Math.random() * 20, Math.random() * 20, Math.random() * 20]);
+	}
 
 	function onSelectedFacetsChange() {
 		search_by_facets = getSelectedFacetsTable();
@@ -261,20 +277,26 @@
 			e.preventDefault();
 			var query = $("#search-field").val();
 			search_term = query;
-			perform_search(query, 1);
+			perform_search(query, 1, search_by_facets);
 
 			reconstruct_hash();
 		});
 	});
 
-	function reconstruct_hash() {
-		var new_hash = "#page="+page+"&query="+search_term;
+	function get_facets_url(facets) {
+		var url = "";
 
-		for (key in search_by_facets) {
-			if (search_by_facets[key].length) {
-				new_hash += "&"+key+"="+search_by_facets[key].join();
+		for (key in facets) {
+			if (facets[key].length) {
+				url += "&"+key+"="+facets[key].join();
 			}
 		}
+
+		return url;
+	}
+
+	function reconstruct_hash() {
+		var new_hash = "#page="+page+"&query="+search_term+get_facets_url(search_by_facets);
 
 		if(history.pushState) {
 		    history.pushState(null, null, new_hash);
@@ -319,7 +341,7 @@
 	}
 
 	function generate_page_link(new_page) {
-		return "#page="+new_page+"&query="+search_term;
+		return "#page="+new_page+"&query="+search_term+get_facets_url(search_by_facets);
 	}
 
 	function show_prev_page(page_count) {
@@ -485,5 +507,8 @@
 	</div>
 	<div id="result_modals"></div>
 	<div id="pagination"></div>
+	<br><br>
+	<h2>Cities Graph</h2>
+	<canvas id="graph"></canvas>
 </body>
 </html>

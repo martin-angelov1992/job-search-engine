@@ -32,23 +32,23 @@ public class FillTestJobs {
 	}};
 
 	private static final List<Job> TEST_JOBS = new LinkedList<Job>(){{
-		for (int i=0;i<50;++i) {
-			add(new Job("Company 1", "Java", "Requirements: None"));
-			add(new Job("Another one", "C++", "Requirements: 3 years"));
-			add(new Job("Some Company", ".NET", "Requirements: C++"));
-			add(new Job("Strange Company", "PHP", "Requirements: SQL, PHP"));
-			add(new Job("BG one", "Seller", "Low salary"));
-			add(new Job("Speedy", "Driver", "Driving license required"));
-			add(new Job("Kaufland", "Security Guard", "Join us!"));
-			add(new Job("Billa", "Security Guard", "Free parking!"));
-			add(new Job("Durjavna Rabota", "Administrator", "Word, Excel required"));
-			add(new Job("Outsource one", "Manager", "Lying skills required"));
-		}
+		add(new Job("Company 1", "Java", "Requirements: None"));
+		add(new Job("Another one", "C++", "Requirements: 3 years"));
+		add(new Job("Some Company", ".NET", "Requirements: C++"));
+		add(new Job("Strange Company", "PHP", "Requirements: SQL, PHP"));
+		add(new Job("BG one", "Seller", "Low salary"));
+		add(new Job("Speedy", "Driver", "Driving license required"));
+		add(new Job("Kaufland", "Security Guard", "Join us!"));
+		add(new Job("Billa", "Security Guard", "Free parking!"));
+		add(new Job("Durjavna Rabota", "Administrator", "Word, Excel required"));
+		add(new Job("Outsource one", "Manager", "Lying skills required"));
 	}};
 
 	public static void main(String[] args) {
-		for (Job job : TEST_JOBS) {
-			STORAGE.processJobWithKnownFormat(job.categoryTypes, job.company, job.jobTitle, job.text);
+		for (int i=0;i<50;++i) {
+			for (Job job : TEST_JOBS) {
+				STORAGE.processJobWithKnownFormat(job.categoryTypes, job.company, job.jobTitle+" "+(i+1), job.text);
+			}
 		}
 	}
 
