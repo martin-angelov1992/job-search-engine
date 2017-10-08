@@ -1,0 +1,137 @@
+diff --git a/front-end/index.html b/front-end/index.html
+index 5a1dc52..997fdaa 100644
+--- a/front-end/index.html
++++ b/front-end/index.html
+@@ -11,6 +11,7 @@
+ <script type="text/javascript">
+ 			var page = null;
+ 			var search_term = null;
++
+ 			var search_by_facets = {};
+ 			var searchable_facets = ["city", "employment-type", "hierarchy-level"];
+ 			var facet_to_ES_field_mapping = {"city" : "Местоположение", "employment-type" : "Тип заетост", "hierarchy-level" : "Ниво в йерархията"};
+@@ -26,11 +27,10 @@
+ 			var ES_FILTERS = geterate_es_filters();
+ 			var PAGE_SIZE = 15;
+ 
+-			function trySearchByHash() {
+-				var hash = window.location.hash;
+-
+-				hash = hash.substr(1, hash.length-1);
++			var hash = window.location.hash;
++			hash = hash.substr(1, hash.length-1);
+ 
++			function trySearchByHash() {
+ 				var parts = hash.split("&");
+ 
+ 				for (i in parts) {
+@@ -93,16 +93,28 @@
+ 				var ES_query = get_ES_query(query, search_by_facets);
+ 				console.log(JSON.stringify(ES_query));
+ 				get_result_count(ES_query);
+-				ES_query.aggs = {
+-    					messages : {
+-     						 filters : {
+-       						 	filters : ES_FILTERS
+-					       }
+-					    }
+-					};
++
++				ES_query.aggs = {};
++				for (i in searchable_facets) {
++					var searchable_facet = searchable_facets[i];
++
++					if (search_by_facets.hasOwnProperty(searchable_facet)) {
++						continue;
++					}
++
++					var ES_field = facet_to_ES_field_mapping[searchable_facet];
++					ES_query.aggs["top-"+searchable_facet] = {terms : 
++													{
++														field: ES_field,
++														size:10
++													}
++												};
++				}
++
+ 				$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+new_page, JSON.stringify(ES_query), function (res){
+ 					$("#results_table").empty();
+ 					$("#result_modals").empty();
++					$("#facets").empty();
+ 
+ 					var hits = res.hits.hits;
+ 
+@@ -131,9 +143,29 @@
+ 						$("#result_modals").append(modal_element);
+ 						$("#"+modal_id).dialog({autoOpen: false, width: 600});
+ 					}
++
++					handle_facet_result(res.aggregations);
+ 				}, "json");
+ 			}
+ 
++			function handle_facet_result(facet_results) {
++				for (key in facet_results) {
++					var facet_name = key.substr("top-".length);
++					var ES_field = facet_to_ES_field_mapping[facet_name];
++					var facet_result = facet_results[key];
++
++					var facet_element_id = "facet-"+facet_name;
++
++					$("#facets").append("<div id='"+facet_element_id+"'><b>"+ES_field+" </b></div>");
++
++					for (key2 in facet_result.buckets) {
++						var facet_value = facet_result.buckets[key2].key;
++						var count = facet_result.buckets[key2].doc_count;
++						$("#"+facet_element_id).append("<a href='"+window.location.hash+"&"+facet_name+"="+facet_value+"'>"+facet_value+"("+count+") "+"</a>");
++					}
++				}
++			}
++
+ 			$(document).ready(function() {
+ 				$("#results_table").on("click", ".result", function() {
+ 					var modal_id = $(this).attr("data-modal");
+@@ -143,7 +175,7 @@
+ 				$("#search-button").click(function() {
+ 					var query = $("#search-field").val();
+ 					search_term = query;
+-					perform_search(query, 1);
++					perform_search(query, 1, search_by_facets);
+ 					reconstruct_hash();
+ 				});
+ 			});
+@@ -193,7 +225,13 @@
+ 			}
+ 
+ 			function generate_page_link(new_page) {
+-				return "#page="+new_page+"&query="+search_term;
++				var link = "#page="+new_page+"&query="+search_term;
++
++				for (key in search_by_facets) {
++					link += "&"+key+"="+search_by_facets[key];
++				}
++
++				return link;
+ 			}
+ 
+ 			function show_prev_page(page_count) {
+@@ -306,11 +344,16 @@
+ 			    	}
+ 				};
+ 
++				ES_query.query.bool.filter = [];
++
+ 				for (key in search_by_facets) {
+ 					var ES_field = facet_to_ES_field_mapping[key];
+-					var filter_term = {};
+-					filter_term[ES_field] = search_by_facets[key];
+-					ES_query.query.constant_score.filter.bool.must.push(filter_term);
++					var filter_term = {
++						term : {
++						}			
++					};
++					filter_term.term[ES_field] = search_by_facets[key];
++					ES_query.query.bool.filter.push(filter_term);
+ 				}
+ 
+ 			    return ES_query;

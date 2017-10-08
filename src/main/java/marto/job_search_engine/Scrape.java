@@ -203,6 +203,7 @@ public class Scrape {
 			try {
 				categoryType = element.findFirst("div.Title").innerHTML().trim();
 				categoryTypeValue = element.findFirst("div.Value").innerHTML().trim();
+				categoryTypeValue = categoryTypeValue.replace("<br>", "").trim();
 			} catch (NotFound e) {
 				System.err.printf("Unable to get category type elements for: %s", jobLink);
 				e.printStackTrace();

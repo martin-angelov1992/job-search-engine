@@ -48,7 +48,7 @@ public class Storage {
 			}
 
             builder.endObject();
-			IndexResponse response = client.prepareIndex("jobs", "jobs")
+			IndexResponse response = client.prepareIndex("jobs12", "jobs12")
 			        .setSource(builder)
 			        .get();
 //			if (response.status().getStatus()) {

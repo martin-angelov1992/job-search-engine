@@ -29,19 +29,24 @@
 	var search_term = null;
 	var search_by_facets = {};
 	var searchable_facets = ["city", "employment_type", "hierarchy_level"];
-	var facet_to_ES_field_mapping = {"city" : "Град", "employment_type" : "Тип Заетост", 
-			"hierarchy_level" : "Ниво в Ерархията"};
+	var facet_to_ES_field_mapping = {"city" : "Местоположение", "employment_type" : "Тип заетост", 
+			"hierarchy_level" : "Ниво в йерархията"};
 
-	var ES_url = "http://localhost:9200/";
+	var ES_url = "http://localhost:9200/jobs12/";
     var facets_table_to_ES_field_map = {"cities" : "city", "employment_types" : "employment_type",
                                         "hierarchy_levels" : "hierarchy_level"};
 	var facets_table = {
-	                    cities:["София", "Враца", "Видин", "Пловдив"],
-						employment_types:["Full Time", "Part time"],
-	                    hierarchy_levels:["Ниско", "Високо", "Средно"]};
+	                    cities:["София", "Варна", "Бургас", "Пловдив"],
+						employment_types:["длъжност на пълно работно време", 
+						                  "длъжност на непълно работно време"],
+	                    hierarchy_levels:["Неквалифициран персонал", 
+	                                      "Административен и помощен персонал", 
+	                                      "Експертен персонал без ръководни функции",
+	                                      "Средно управленско ниво",
+	                                      "Висше управленско ниво"]};
 
 	var ES_FILTERS = geterate_es_filters();
-	var graph2 = null;
+	var graph = null;
 
 	$(document).ready(function(){
 		add_facet_columns();
@@ -49,20 +54,38 @@
 		add_facet_options();
 
 		$("[data-facet-checkbox]").change(onSelectedFacetsChange);
-		initGraph();'
+		initGraph();
 	});
 
 	function initGraph() {
-		graph2 = new BarGraph(document.getElementById("graph").getContext("2d"));
-		graph2.margin = 2;
-		graph2.width = 450;
-		graph2.height = 150;
-		graph2.xAxisLabelArr = facets_table.cities;
+		graph = new BarGraph(document.getElementById("graph").getContext("2d"));
+		graph.margin = 2;
+		graph.width = 450;
+		graph.height = 150;
+		graph.animationSteps = 1;
+		graph.xAxisLabelArr = facets_table.cities;
 	}
 
 	function updateGraph() {
-		
-		graph2.update([Math.random() * 20, Math.random() * 20, Math.random() * 20, Math.random() * 20]);
+		var ES_query = get_ES_query(search_term, search_by_facets, true);
+		ES_query.size = 0;
+		ES_query.aggs = {cities : {terms: {field: "Местоположение.keyword"}}};
+		$.post(ES_url+"_search", JSON.stringify(ES_query), function(result) {
+			var citiesData = [];
+			var values = facets_table.cities;
+			var buckets = result.aggregations.cities.buckets;
+
+			for (i in values) {
+				var title = values[i];
+
+				var count = get_count_from_aggregations(buckets, title);
+
+				citiesData.push(count)
+			}
+
+			console.log("Updating graph values: %o", citiesData);
+			graph.update(citiesData);			
+		});
 	}
 
 	function onSelectedFacetsChange() {
@@ -174,7 +197,7 @@
 		for (var key in facets_table) {
 			var facet_arr = facets_table[key];
 			for (i in facet_arr) {
-				var ES_field = facets_table_to_ES_field_map[key];
+				var ES_field = facet_to_ES_field_mapping[facets_table_to_ES_field_map[key]]+".keyword";
 
 				es_filters[key] = {terms: {field: ES_field}};
 			}
@@ -189,6 +212,9 @@
 		console.log(JSON.stringify(ES_query));
 		get_result_count(ES_query);
 		ES_query.aggs = ES_FILTERS;
+
+		updateGraph();
+
 		$.post(ES_url+"_search?size="+PAGE_SIZE+"&from="+(new_page-1)*PAGE_SIZE, JSON.stringify(ES_query), function (res){
 			$("#results_table").empty();
 			$("#result_modals").empty();
@@ -429,7 +455,7 @@
 		$("#pagination").append(new_element);
 	}
 
-	function get_ES_query(query, search_by_facets) {
+	function get_ES_query(query, search_by_facets, skip_cities) {
 		if (!query) {
 			query = "";
 		}
@@ -472,7 +498,7 @@
 		for (key in search_by_facets) {
 			var values = search_by_facets[key];
 
-			if (!values.length) {
+			if (!values.length || (key == "city" && skip_cities)) {
 				continue;
 			}
 
@@ -483,6 +509,8 @@
 			}
 
 			ES_query.query.bool.must.push(orQuery);
+			
+			key = facet_to_ES_field_mapping[key]+".keyword";
 			
 			for (i in values) {
 				var value = values[i];

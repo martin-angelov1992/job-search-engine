@@ -10,11 +10,11 @@ import java.util.concurrent.ThreadLocalRandom;
 public class FillTestJobs {
 	private static final Storage STORAGE = new Storage();
 	private static final Map<String, List<String>> AVAILABLE_CATEGORY_TYPES = new HashMap<String, List<String>>(){{
-		put("employment_type", new LinkedList<String>(){{
+		put("Тип Заетост", new LinkedList<String>(){{
 			add("Full Time");
 			add("Part time");
 		}});		
-		put("city", new LinkedList<String>(){{
+		put("Местоположение", new LinkedList<String>(){{
 			add("София");
 			add("Враца");
 			add("Видин");
@@ -24,7 +24,7 @@ public class FillTestJobs {
 //			add("Продажби");
 //			add("Сив");
 //		}});
-		put("hierarchy_level", new LinkedList<String>(){{
+		put("Ниво в Ерархията", new LinkedList<String>(){{
 			add("Ниско");
 			add("Високо");
 			add("Средно");
